@@ -4,14 +4,28 @@ use glam::f32::*;
 
 use itertools::Itertools;
 
-// A smoothly varying curve in 3-space.
+// A twice-differentiable parametric curve in 3-space.
 pub trait Curve {
+    /// The value of this curve.
     fn p(&self, u: f32) -> Vec3;
+    /// The derivative of this curve.
+    fn dp(&self, u: f32) -> Vec3;
+    /// The second derivative of this curve.
+    fn d2p(&self, u: f32) -> Vec3;
+
+    /// The speed of this curve.
+    /// Pythagorean hodographs have speed expressible as a simple polynomial, which makes
+    /// certain quantities (such as arc length) efficient to compute.
     fn speed(&self, u: f32) -> f32;
+
+    fn tangent(&self, u: f32) -> Vec3 {
+        self.dp(u) / self.speed(u)
+    }
 }
 
-// A single-parameter moving frame in 3-space.
+// A parametric moving frame in 3-space.
 pub trait Frame {
+    /// The value of moving frame in 3-space, containing both translation and rotation components.
     fn frame(&self, u: f32) -> Affine3A;
 }
 
@@ -38,6 +52,18 @@ impl<T: Curve> Curve for Spline<T> {
     }
 
     #[inline]
+    fn dp(&self, u: f32) -> Vec3 {
+        let (u, i) = self.normalize(u);
+        self.segments[i].dp(u)
+    }
+
+    #[inline]
+    fn d2p(&self, u: f32) -> Vec3 {
+        let (u, i) = self.normalize(u);
+        self.segments[i].d2p(u)
+    }
+
+    #[inline]
     fn speed(&self, u: f32) -> f32 {
         let (u, i) = self.normalize(u);
         self.segments[i].speed(u) * self.segments.len() as f32
@@ -48,6 +74,7 @@ impl<T: Curve> Frame for Spline<T>
 where
     T: Frame,
 {
+    #[inline]
     fn frame(&self, u: f32) -> Affine3A {
         let (u, i) = self.normalize(u);
         self.segments[i].frame(u)
@@ -138,6 +165,9 @@ impl QuinticPHCurve {
     }
 }
 
+/// A special moving frame associated with pythagorean hodographs in 3-space,
+/// which is easy to compute.
+/// The Euler-Rodrigues frame of a spline is not necessarily continuous.
 pub struct EulerRodriguesFrame {
     data: QuinticPHCurve,
     curve: HermiteQuintic,
@@ -147,6 +177,16 @@ impl Curve for EulerRodriguesFrame {
     #[inline]
     fn p(&self, u: f32) -> Vec3 {
         self.curve.p(u)
+    }
+
+    #[inline]
+    fn dp(&self, u: f32) -> Vec3 {
+        self.curve.dp(u)
+    }
+
+    #[inline]
+    fn d2p(&self, u: f32) -> Vec3 {
+        self.curve.d2p(u)
     }
 
     #[inline]
@@ -207,34 +247,7 @@ pub struct HermiteQuintic {
 }
 
 impl HermiteQuintic {
-    #[inline]
-    pub fn tangent(&self, u: f32) -> Vec3 {
-        hermite_quintic_polynomial(self.weighted_tangents, u)
-            / hermite_quintic_polynomial(self.weights, u)
-    }
-
-    #[inline]
-    pub fn speed(&self, u: f32) -> f32 {
-        hermite_quintic_polynomial(self.weights, u)
-    }
-
-    #[inline]
-    pub fn p(&self, u: f32) -> Vec3 {
-        self.pi + hermite_quintic_polynomial_integral(self.weighted_tangents, u)
-            - hermite_quintic_polynomial_integral(self.weighted_tangents, 0.)
-    }
-
-    #[inline]
-    pub fn dp(&self, u: f32) -> Vec3 {
-        hermite_quintic_polynomial(self.weighted_tangents, u)
-    }
-
-    #[inline]
-    pub fn d2p(&self, u: f32) -> Vec3 {
-        hermite_quintic_polynomial_derivative(self.weighted_tangents, u)
-    }
-
-    pub fn elastic_bending_energy(&self) -> f32 {
+    fn elastic_bending_energy(&self) -> f32 {
         (0..1000)
             .map(|x| x as f32 * 0.001)
             .map(|u| self.curvature_squared(u) * self.speed(u) * 0.001)
@@ -250,11 +263,20 @@ impl HermiteQuintic {
 
 impl Curve for HermiteQuintic {
     fn p(&self, u: f32) -> Vec3 {
-        self.p(u)
+        self.pi + hermite_quintic_polynomial_integral(self.weighted_tangents, u)
+            - hermite_quintic_polynomial_integral(self.weighted_tangents, 0.)
+    }
+
+    fn dp(&self, u: f32) -> Vec3 {
+        hermite_quintic_polynomial(self.weighted_tangents, u)
+    }
+
+    fn d2p(&self, u: f32) -> Vec3 {
+        hermite_quintic_polynomial_derivative(self.weighted_tangents, u)
     }
 
     fn speed(&self, u: f32) -> f32 {
-        self.speed(u)
+        hermite_quintic_polynomial(self.weights, u)
     }
 }
 
