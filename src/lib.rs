@@ -89,7 +89,7 @@ impl QuinticPHCurve {
             })
             .map(|(ta0, ta1, ta2)| (q_normalized * ta0, q_normalized * ta1, q_normalized * ta2))
             .map(|(a0, a1, a2)| QuinticPHCurve { a0, a1, a2, pi })
-            .min_by_key(|h| ordered_float::OrderedFloat(h.curve_private().elastic_bending_energy()))
+            .min_by_key(|h| ordered_float::OrderedFloat(h.curve().elastic_bending_energy()))
             .unwrap()
     }
 
@@ -97,11 +97,11 @@ impl QuinticPHCurve {
     pub fn euler_rodrigues_frame(&self) -> EulerRodriguesFrame {
         EulerRodriguesFrame {
             data: *self,
-            curve: self.curve_private(),
+            curve: self.curve(),
         }
     }
 
-    fn curve_private(&self) -> HermiteQuintic {
+    pub fn curve(&self) -> HermiteQuintic {
         let a0len2 = self.a0.length_squared();
         let a1len2 = self.a1.length_squared();
         let a2len2 = self.a2.length_squared();
@@ -135,11 +135,6 @@ impl QuinticPHCurve {
             weights: [w0, w1, w2, w3, w4],
             weighted_tangents: [wt0, wt1, wt2, wt3, wt4],
         }
-    }
-
-    #[inline]
-    pub fn curve(&self) -> impl Curve {
-        self.curve_private()
     }
 }
 
