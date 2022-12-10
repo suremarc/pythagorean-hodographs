@@ -90,6 +90,9 @@ pub struct QuinticPHCurve {
 }
 
 impl QuinticPHCurve {
+    /// Construct a new quintic PH curve given C1 data.
+    /// pi and pf are the initial and final positions, while
+    /// di and df are the initial and final derivatives.
     pub fn new(pi: Vec3, pf: Vec3, di: Vec3, df: Vec3) -> QuinticPHCurve {
         let dp = pf - pi;
         let (q, _) = inverse_solve_quat(di + df);

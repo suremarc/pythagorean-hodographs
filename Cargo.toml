@@ -1,9 +1,16 @@
 [package]
 name = "pythagorean-hodographs"
 version = "0.1.0"
+authors = ["Matthew Cramerus <suremarc.pm@gmail.com>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Pythaogrean hodograph splines"
+documentation = "https://docs.rs/pythagorean-hodographs"
+readme = "README.md"
+homepage = "https://github.com/suremarc/pythagorean-hodographs"
+repository = "https://github.com/suremarc/pythagorean-hodographs"
+license = "MIT OR Apache-2.0"
+keywords = ["math", "geometry", "spline", "interpolation", "number"]
+categories = ["mathematics"]
 
 [dependencies]
 glam = "0.22.0"
