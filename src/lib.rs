@@ -18,6 +18,9 @@ pub trait Curve {
     /// certain quantities (such as arc length) efficient to compute.
     fn speed(&self, u: f32) -> f32;
 
+    // The arc length of this curve between 0 and u.
+    fn arc_length(&self, u: f32) -> f32
+
     fn tangent(&self, u: f32) -> Vec3 {
         self.dp(u) / self.speed(u)
     }
@@ -68,6 +71,14 @@ impl<T: Curve> Curve for Spline<T> {
         let (u, i) = self.normalize(u);
         self.segments[i].speed(u) * self.segments.len() as f32
     }
+
+
+    // TODO: make this more efficient
+    #[inline]
+    fn arc_length(&self, u: f32) -> f32 {
+        let (u, i) = self.normalize(u);
+        self.segments[0..i].iter().map(|h| h.arc_length(1.0)).sum::<f32>() + self.segments[i].arc_length(u)
+    }
 }
 
 impl<T: Curve> Frame for Spline<T>
@@ -117,6 +128,11 @@ impl Curve for QuinticPHCurve {
     #[inline]
     fn speed(&self, u: f32) -> f32 {
         self.hermite.speed(u)
+    }
+
+    #[inline]
+    fn arc_length(&self, u: f32) -> f32 {
+        self.hermite.arc_length(u)
     }
 }
 
@@ -281,6 +297,10 @@ impl Curve for HermiteQuintic {
 
     fn speed(&self, u: f32) -> f32 {
         hermite_quintic_polynomial(self.weights, u)
+    }
+
+    fn arc_length(&self, u: f32) -> f32 {
+        hermite_quintic_polynomial_integral(self.weights, u)
     }
 }
 
