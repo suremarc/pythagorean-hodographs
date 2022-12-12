@@ -57,13 +57,13 @@ impl<T: Curve> Curve for Spline<T> {
     #[inline]
     fn dp(&self, u: f32) -> Vec3 {
         let (u, i) = self.normalize(u);
-        self.segments[i].dp(u)
+        self.segments[i].dp(u) * self.segments.len() as f32
     }
 
     #[inline]
     fn d2p(&self, u: f32) -> Vec3 {
         let (u, i) = self.normalize(u);
-        self.segments[i].d2p(u)
+        self.segments[i].d2p(u) * self.segments.len().pow(2) as f32
     }
 
     #[inline]
