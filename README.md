@@ -30,7 +30,7 @@ then $\mathbf{p}(t)$ is a Pythaogrean hodograph, because $(u^2-v^2)^2+(2uv)^2=(u
 
 There are many useful properties of Pythagorean hodographs as a result of this:
 
-1. The tangent vector, $\frac{\mathbf{p}(t)}{s(t)},$ has rational polynomials as components. This makes computing the tangent fast, although square roots nowadays have dedicated CPU instructions.
+1. The tangent vector, $\frac{\mathbf{p}'(t)}{|\mathbf{p}'(t)|},$ has rational functions as components. This makes computing the tangent fast, although square roots nowadays have dedicated CPU instructions.
 
 2. The arc-length function $s(t)=\int_0^t|\mathbf{p}'(\tau)|\ d\tau$ is a polynomial function.
 
