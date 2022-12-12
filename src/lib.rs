@@ -19,7 +19,7 @@ pub trait Curve {
     fn speed(&self, u: f32) -> f32;
 
     // The arc length of this curve between 0 and u.
-    fn arc_length(&self, u: f32) -> f32
+    fn arc_length(&self, u: f32) -> f32;
 
     fn tangent(&self, u: f32) -> Vec3 {
         self.dp(u) / self.speed(u)
@@ -72,12 +72,15 @@ impl<T: Curve> Curve for Spline<T> {
         self.segments[i].speed(u) * self.segments.len() as f32
     }
 
-
     // TODO: make this more efficient
     #[inline]
     fn arc_length(&self, u: f32) -> f32 {
         let (u, i) = self.normalize(u);
-        self.segments[0..i].iter().map(|h| h.arc_length(1.0)).sum::<f32>() + self.segments[i].arc_length(u)
+        self.segments[0..i]
+            .iter()
+            .map(|h| h.arc_length(1.0))
+            .sum::<f32>()
+            + self.segments[i].arc_length(u)
     }
 }
 
