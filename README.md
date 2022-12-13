@@ -42,14 +42,14 @@ There are many useful properties of Pythagorean hodographs as a result of this:
 
 Well-studied readers may have noticed a connection to complex numbers. In particular, if $x(t)=u(t)+iv(t),$ then $p(t)=x(t)^2$ (where $\mathbf{p}(t)$ and $p(t)$ are equivalent via the map from $\mathbb{R}^2\rightarrow\mathbb{C}$).
 
-Complex numbers are isomorphic to the plane, but we need something else if we want to model three dimensions -- __quaternions__. One has the following presentation: $\mathbf{r}(t)$ is a spatial PH curve if there exists a quaternion curve $\mathcal{A}(t)$ such that
+Complex numbers are isomorphic to the plane, but we need something else if we want to model three dimensions -- __quaternions__. One has the following presentation: $\mathbf{r}(t)$ is a spatial PH curve if there exists a quaternionic polynomial curve $\mathcal{A}(t)$ such that
 
 $$\begin{equation}
 \begin{gathered}
     \begin{aligned}
     \mathcal{A}(t)&=u(t)+v(t)\cdot\mathbf{i}+p(t)\cdot\mathbf{j}+q(t)\cdot\mathbf{k} \\
     r'(t)&=\mathcal{A}(t)\ \mathbf{i}\ \bar{\mathcal{A}}(t)\\
-    &=[u(t)^2+v(t)^2+p(t)^2+q(t)^2]\cdot\mathbf{i}+2[u(t)q(t)+v(t)p(t)]\cdot\mathbf{j}+2[v(t)q(t)-u(t)p(t)]\cdot\mathbf{k}
+    &=[u(t)^2+v(t)^2-p(t)^2-q(t)^2]\cdot\mathbf{i}+2[u(t)q(t)+v(t)p(t)]\cdot\mathbf{j}+2[v(t)q(t)-u(t)p(t)]\cdot\mathbf{k}
     \end{aligned}
 \end{gathered}
 \end{equation}$$
