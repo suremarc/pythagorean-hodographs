@@ -1,11 +1,11 @@
-use std::ops::{Add, Mul};
+#![no_std]
 
+use core::ops::{Add, Mul};
 use glam::f32::*;
-
 use itertools::Itertools;
 
 /// A twice-differentiable parametric curve in 3-space.
-pub trait Curve {
+pub trait Curve3 {
     /// The value of this curve.
     fn p(&self, u: f32) -> Vec3;
     /// The derivative of this curve.
@@ -33,12 +33,22 @@ pub trait Frame {
 }
 
 /// A continuous curve built up from piecewise polynomials.
-pub struct Spline<T: Curve> {
-    segments: Vec<T>,
+#[repr(transparent)]
+pub struct Spline<T: Curve3> {
+    pub segments: [T],
 }
 
-impl<T: Curve> Spline<T> {
-    #[inline]
+impl<T: Curve3> Spline<T> {
+    pub fn from_segments(segments: &[T]) -> &Self {
+        unsafe { core::mem::transmute(segments) }
+    }
+
+    pub fn from_segments_mut(segments: &mut [T]) -> &mut Self {
+        unsafe { core::mem::transmute(segments) }
+    }
+}
+
+impl<T: Curve3> Spline<T> {
     fn normalize(&self, mut u: f32) -> (f32, usize) {
         u *= self.segments.len() as f32;
         let i = u.floor().clamp(0., self.segments.len() as f32 - 1.);
@@ -47,7 +57,7 @@ impl<T: Curve> Spline<T> {
     }
 }
 
-impl<T: Curve> Curve for Spline<T> {
+impl<T: Curve3> Curve3 for Spline<T> {
     #[inline]
     fn p(&self, u: f32) -> Vec3 {
         let (u, i) = self.normalize(u);
@@ -73,7 +83,6 @@ impl<T: Curve> Curve for Spline<T> {
     }
 
     // TODO: make this more efficient
-    #[inline]
     fn arc_length(&self, u: f32) -> f32 {
         let (u, i) = self.normalize(u);
         self.segments[0..i]
@@ -84,7 +93,7 @@ impl<T: Curve> Curve for Spline<T> {
     }
 }
 
-impl<T: Curve> Frame for Spline<T>
+impl<T: Curve3> Frame for Spline<T>
 where
     T: Frame,
 {
@@ -112,7 +121,7 @@ impl QuinticPHCurve {
     }
 }
 
-impl Curve for QuinticPHCurve {
+impl Curve3 for QuinticPHCurve {
     #[inline]
     fn p(&self, u: f32) -> Vec3 {
         self.hermite.p(u)
@@ -142,7 +151,7 @@ impl Curve for QuinticPHCurve {
 impl Frame for QuinticPHCurve {
     /// The Euler-Rodrigues frame for this PH curve.
     /// Note that a spline consisting of Euler-Rodrigues frames is not necessarily continuous.
-    /// This is intended to be correct in future implementations, and R. Farouki provides
+    /// This is intended to be corrected in future implementations, and R. Farouki provides
     /// an algorithm to do so, but more research is needed.
     fn frame(&self, u: f32) -> Affine3A {
         let a = self.data.a0 * (1. - u).powi(2)
@@ -160,28 +169,60 @@ impl Frame for QuinticPHCurve {
 impl Spline<QuinticPHCurve> {
     /// Construct a quintic PH spline from positional data, using the Catmull-Rom method
     /// for the differential data.
-    pub fn catmull_rom(pts: Vec<Vec3>) -> Self {
+    /// Returns an iterator, so that the method of storage may be chosen at the call site.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pythagorean_hodographs::{Spline, QuinticPHCurve};
+    /// use glam::vec3;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// let pts = [
+    ///     vec3(6., 12., 1.),
+    ///     vec3(0., 8., 2.),
+    ///     vec3(3., 4., 7.),
+    ///     vec3(6., 0., 4.),
+    ///     vec3(8., 4., 5.),
+    ///     vec3(12., 2., 6.),
+    ///     vec3(11., 10., 7.),
+    ///     vec3(11., 19., 8.),
+    /// ];
+    ///
+    /// // Allocating on the heap
+    /// let segments: Vec<_> = Spline::<QuinticPHCurve>::catmull_rom(pts.as_slice()).collect();
+    /// let spline = Spline::from_segments(&segments);
+    ///
+    /// // Allocating on the stack
+    /// // There are 5 segments, since Catmull-Rom uses a sliding window of length 4 for each segment.
+    /// let mut out: [MaybeUninit<QuinticPHCurve>; 5] = unsafe { MaybeUninit::uninit().assume_init() };
+    /// for (out_ptr, segment) in out.iter_mut().zip(Spline::catmull_rom(pts.as_slice())) {
+    ///     *out_ptr = MaybeUninit::new(segment);
+    /// }
+    ///
+    /// let spline: &Spline<QuinticPHCurve> = Spline::from_segments(unsafe { core::mem::transmute(out.as_slice()) });
+    /// assert_eq!(spline.segments.len(), 5);
+    /// ```
+    pub fn catmull_rom(pts: &[Vec3]) -> impl Iterator<Item = QuinticPHCurve> + '_ {
         let n = pts.len();
-        Self {
-            segments: pts
-                .into_iter()
+        Self::hermite_from_iter(
+            pts.iter()
+                .copied()
                 .tuple_windows()
-                .map(|(p0, p1, p2)| (p1, 0.25 * ((n - 2) as f32) * (p2 - p0)))
-                .tuple_windows()
-                .map(|((p0, d0), (p1, d1))| QuinticPHCurve::new(p0, p1, d0, d1))
-                .collect(),
-        }
+                .map(move |(p0, p1, p2)| (p1, 0.25 * ((n - 2) as f32) * (p2 - p0))),
+        )
     }
 
     /// Construct a quintic PH spline given C1 interpolation data (position and derivative pairs).
-    pub fn hermite(data: Vec<[Vec3; 2]>) -> Self {
-        Self {
-            segments: data
-                .into_iter()
-                .tuple_windows()
-                .map(|([p0, d0], [p1, d1])| QuinticPHCurve::new(p0, p1, d0, d1))
-                .collect(),
-        }
+    pub fn hermite(data: &[(Vec3, Vec3)]) -> impl Iterator<Item = QuinticPHCurve> + '_ {
+        Self::hermite_from_iter(data.iter().copied())
+    }
+
+    fn hermite_from_iter(
+        data: impl Iterator<Item = (Vec3, Vec3)>,
+    ) -> impl Iterator<Item = QuinticPHCurve> {
+        data.tuple_windows()
+            .map(|((p0, d0), (p1, d1))| QuinticPHCurve::new(p0, p1, d0, d1))
     }
 }
 
@@ -271,20 +312,19 @@ struct HermiteQuintic {
 
 impl HermiteQuintic {
     fn elastic_bending_energy(&self) -> f32 {
-        (0..1000)
-            .map(|x| x as f32 * 0.001)
-            .map(|u| self.curvature_squared(u) * self.speed(u) * 0.001)
+        (0..10)
+            .map(|x| x as f32 * 0.1)
+            .map(|u| self.curvature_squared(u) * self.speed(u) * 0.1)
             .sum()
     }
 
-    #[inline]
     fn curvature_squared(&self, u: f32) -> f32 {
         self.dp(u).cross(self.d2p(u)).length_squared()
             / hermite_quintic_polynomial(self.weights, u).powi(6)
     }
 }
 
-impl Curve for HermiteQuintic {
+impl Curve3 for HermiteQuintic {
     fn p(&self, u: f32) -> Vec3 {
         self.pi + hermite_quintic_polynomial_integral(self.weighted_tangents, u)
             - hermite_quintic_polynomial_integral(self.weighted_tangents, 0.)
