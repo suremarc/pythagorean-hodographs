@@ -1,5 +1,8 @@
 #![no_std]
 
+extern crate alloc;
+
+use alloc::vec::Vec;
 use core::ops::{Add, Mul};
 use glam::f32::*;
 use itertools::Itertools;
@@ -35,17 +38,7 @@ pub trait Frame {
 /// A continuous curve built up from piecewise polynomials.
 #[repr(transparent)]
 pub struct Spline<T: Curve3> {
-    pub segments: [T],
-}
-
-impl<T: Curve3> Spline<T> {
-    pub fn from_segments(segments: &[T]) -> &Self {
-        unsafe { core::mem::transmute(segments) }
-    }
-
-    pub fn from_segments_mut(segments: &mut [T]) -> &mut Self {
-        unsafe { core::mem::transmute(segments) }
-    }
+    pub segments: Vec<T>,
 }
 
 impl<T: Curve3> Spline<T> {
@@ -169,60 +162,30 @@ impl Frame for QuinticPHCurve {
 impl Spline<QuinticPHCurve> {
     /// Construct a quintic PH spline from positional data, using the Catmull-Rom method
     /// for the differential data.
-    /// Returns an iterator, so that the method of storage may be chosen at the call site.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use pythagorean_hodographs::{Spline, QuinticPHCurve};
-    /// use glam::vec3;
-    /// use core::mem::MaybeUninit;
-    ///
-    /// let pts = [
-    ///     vec3(6., 12., 1.),
-    ///     vec3(0., 8., 2.),
-    ///     vec3(3., 4., 7.),
-    ///     vec3(6., 0., 4.),
-    ///     vec3(8., 4., 5.),
-    ///     vec3(12., 2., 6.),
-    ///     vec3(11., 10., 7.),
-    ///     vec3(11., 19., 8.),
-    /// ];
-    ///
-    /// // Allocating on the heap
-    /// let segments: Vec<_> = Spline::<QuinticPHCurve>::catmull_rom(pts.as_slice()).collect();
-    /// let spline = Spline::from_segments(&segments);
-    ///
-    /// // Allocating on the stack
-    /// // There are 5 segments, since Catmull-Rom uses a sliding window of length 4 for each segment.
-    /// let mut out: [MaybeUninit<QuinticPHCurve>; 5] = unsafe { MaybeUninit::uninit().assume_init() };
-    /// for (out_ptr, segment) in out.iter_mut().zip(Spline::catmull_rom(pts.as_slice())) {
-    ///     *out_ptr = MaybeUninit::new(segment);
-    /// }
-    ///
-    /// let spline: &Spline<QuinticPHCurve> = Spline::from_segments(unsafe { core::mem::transmute(out.as_slice()) });
-    /// assert_eq!(spline.segments.len(), 5);
-    /// ```
-    pub fn catmull_rom(pts: &[Vec3]) -> impl Iterator<Item = QuinticPHCurve> + '_ {
+    pub fn catmull_rom(pts: &[Vec3]) -> Self {
         let n = pts.len();
-        Self::hermite_from_iter(
-            pts.iter()
+        Self {
+            segments: pts
+                .iter()
                 .copied()
                 .tuple_windows()
-                .map(move |(p0, p1, p2)| (p1, 0.25 * ((n - 2) as f32) * (p2 - p0))),
-        )
+                .map(move |(p0, p1, p2)| (p1, 0.25 * ((n - 2) as f32) * (p2 - p0)))
+                .tuple_windows()
+                .map(|((p0, d0), (p1, d1))| QuinticPHCurve::new(p0, p1, d0, d1))
+                .collect(),
+        }
     }
 
     /// Construct a quintic PH spline given C1 interpolation data (position and derivative pairs).
-    pub fn hermite(data: &[(Vec3, Vec3)]) -> impl Iterator<Item = QuinticPHCurve> + '_ {
-        Self::hermite_from_iter(data.iter().copied())
-    }
-
-    fn hermite_from_iter(
-        data: impl Iterator<Item = (Vec3, Vec3)>,
-    ) -> impl Iterator<Item = QuinticPHCurve> {
-        data.tuple_windows()
-            .map(|((p0, d0), (p1, d1))| QuinticPHCurve::new(p0, p1, d0, d1))
+    pub fn hermite(data: &[(Vec3, Vec3)]) -> Self {
+        Self {
+            segments: data
+                .iter()
+                .copied()
+                .tuple_windows()
+                .map(|((p0, d0), (p1, d1))| QuinticPHCurve::new(p0, p1, d0, d1))
+                .collect(),
+        }
     }
 }
 
@@ -311,10 +274,11 @@ struct HermiteQuintic {
 }
 
 impl HermiteQuintic {
+    // FIXME: replace this with exact formula for greater precision and speed
     fn elastic_bending_energy(&self) -> f32 {
-        (0..10)
-            .map(|x| x as f32 * 0.1)
-            .map(|u| self.curvature_squared(u) * self.speed(u) * 0.1)
+        (0..1000)
+            .map(|x| x as f32 * 0.001)
+            .map(|u| self.curvature_squared(u) * self.speed(u) * 0.001)
             .sum()
     }
 

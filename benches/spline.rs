@@ -7,7 +7,7 @@ fn spline(c: &mut Criterion) {
     c.bench_function("quintic PH spline (100 points)", |b| {
         b.iter_batched(
             || thread_rng().sample_iter(Standard).take(100).collect(),
-            |data: Vec<Vec3>| black_box(Spline::catmull_rom(&data).collect::<Vec<_>>()),
+            |data: Vec<Vec3>| black_box(Spline::catmull_rom(&data)),
             BatchSize::SmallInput,
         )
     });
