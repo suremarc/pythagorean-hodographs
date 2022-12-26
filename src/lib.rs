@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 
@@ -6,6 +6,8 @@ use alloc::vec::Vec;
 use core::ops::{Add, Mul};
 use glam::f32::*;
 use itertools::Itertools;
+#[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float;
 
 /// A twice-differentiable parametric curve in 3-space.
