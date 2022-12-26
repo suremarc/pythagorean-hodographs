@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use core::ops::{Add, Mul};
 use glam::f32::*;
 use itertools::Itertools;
+use num_traits::Float;
 
 /// A twice-differentiable parametric curve in 3-space.
 pub trait Curve3 {
