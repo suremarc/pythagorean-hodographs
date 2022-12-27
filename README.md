@@ -48,8 +48,8 @@ $$\begin{equation}
 \begin{gathered}
     \begin{aligned}
     \mathcal{A}(t)&=u(t)+v(t)\cdot\mathbf{i}+p(t)\cdot\mathbf{j}+q(t)\cdot\mathbf{k} \\
-    r'(t)&=\mathcal{A}(t)\ \mathbf{i}\ \bar{\mathcal{A}}(t)\\
-    &=[u(t)^2+v(t)^2-p(t)^2-q(t)^2]\cdot\mathbf{i}+2[u(t)q(t)+v(t)p(t)]\cdot\mathbf{j}+2[v(t)q(t)-u(t)p(t)]\cdot\mathbf{k}
+    r'(t)&=-\mathcal{A}(t)\ \mathbf{k}\ \bar{\mathcal{A}}(t)\\
+    &=-2[u(t)p(t)+v(t)q(t)]\cdot\mathbf{i}+2[u(t)v(t)-p(t)q(t)]\cdot\mathbf{j}+2[u(t)^2-v(t)^2-p(t)^2+q(t)^2]\cdot\mathbf{k}
     \end{aligned}
 \end{gathered}
 \end{equation}$$
