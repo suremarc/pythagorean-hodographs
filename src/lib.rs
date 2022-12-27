@@ -39,7 +39,7 @@ pub trait Frame {
 }
 
 /// A continuous curve built up from piecewise polynomials.
-#[repr(transparent)]
+#[derive(Debug, Clone)]
 pub struct Spline<T: Curve3> {
     pub segments: Vec<T>,
 }
@@ -100,7 +100,7 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct QuinticPHCurve {
     data: QuinticPHData,
     hermite: HermiteQuintic,
@@ -269,7 +269,7 @@ impl QuinticPHData {
 }
 
 /// Hermite quintic polynomial obtained from the construction of a quintic PH spline.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 struct HermiteQuintic {
     pi: Vec3,
     weights: [f32; 5],
