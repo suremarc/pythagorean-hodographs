@@ -33,9 +33,24 @@ pub trait Curve3 {
 }
 
 /// A parametric moving frame in 3-space.
-pub trait Frame {
+pub trait Frame: Curve3 {
+    fn quat_unnormalized(&self, u: f32) -> Quat;
+
+    // A quaternion representation of this moving frame's rotational component.
+    fn quat(&self, u: f32) -> Quat {
+        self.quat_unnormalized(u).normalize()
+    }
+
     /// The value of moving frame in 3-space, containing both translation and rotation components.
-    fn frame(&self, u: f32) -> Affine3A;
+    fn frame(&self, u: f32) -> Affine3A {
+        let a = self.quat_unnormalized(u);
+
+        let ai = (a * Quat::from_xyzw(1., 0., 0., 0.) * a.conjugate()).xyz() / a.length_squared();
+        let aj = (a * Quat::from_xyzw(0., 1., 0., 0.) * a.conjugate()).xyz() / a.length_squared();
+        let ak = (a * Quat::from_xyzw(0., 0., 1., 0.) * a.conjugate()).xyz() / a.length_squared();
+
+        Affine3A::from_mat3_translation(Mat3::from_cols(ai, aj, ak), self.p(u))
+    }
 }
 
 /// A continuous curve built up from piecewise polynomials.
@@ -94,9 +109,9 @@ where
     T: Frame,
 {
     #[inline]
-    fn frame(&self, u: f32) -> Affine3A {
+    fn quat_unnormalized(&self, u: f32) -> Quat {
         let (u, i) = self.normalize(u);
-        self.segments[i].frame(u)
+        self.segments[i].quat_unnormalized(u)
     }
 }
 
@@ -145,20 +160,14 @@ impl Curve3 for QuinticPHCurve {
 }
 
 impl Frame for QuinticPHCurve {
-    /// The Euler-Rodrigues frame for this PH curve.
+    /// The quaternion associated with the Euler-Rodrigues frame for this PH curve.
     /// Note that a spline consisting of Euler-Rodrigues frames is not necessarily continuous.
     /// This is intended to be corrected in future implementations, and R. Farouki provides
     /// an algorithm to do so, but more research is needed.
-    fn frame(&self, u: f32) -> Affine3A {
-        let a = self.data.a0 * (1. - u).powi(2)
+    fn quat_unnormalized(&self, u: f32) -> Quat {
+        self.data.a0 * (1. - u).powi(2)
             + self.data.a1 * u * (1. - u) * 2.
-            + self.data.a2 * u.powi(2);
-
-        let ai = (a * Quat::from_xyzw(1., 0., 0., 0.) * a.conjugate()).xyz() / a.length_squared();
-        let aj = (a * Quat::from_xyzw(0., 1., 0., 0.) * a.conjugate()).xyz() / a.length_squared();
-        let ak = (a * Quat::from_xyzw(0., 0., 1., 0.) * a.conjugate()).xyz() / a.length_squared();
-
-        Affine3A::from_mat3_translation(Mat3::from_cols(ai, aj, ak), self.hermite.p(u))
+            + self.data.a2 * u.powi(2)
     }
 }
 
