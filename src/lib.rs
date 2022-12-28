@@ -185,6 +185,7 @@ impl Spline<QuinticPHCurve> {
                 .map(|((p0, d0), (p1, d1))| QuinticPHCurve::new(p0, p1, d0, d1))
                 .collect(),
         }
+        .make_frames_continuous()
     }
 
     /// Construct a quintic PH spline given C1 interpolation data (position and derivative pairs).
@@ -197,6 +198,19 @@ impl Spline<QuinticPHCurve> {
                 .map(|((p0, d0), (p1, d1))| QuinticPHCurve::new(p0, p1, d0, d1))
                 .collect(),
         }
+        .make_frames_continuous()
+    }
+
+    fn make_frames_continuous(mut self) -> Self {
+        for i in 1..self.segments.len() {
+            let delta_a = self.segments[i].data.a0.conjugate() * self.segments[i - 1].data.a2;
+            let data = &mut self.segments[i].data;
+            for a in [&mut data.a0, &mut data.a1, &mut data.a2] {
+                *a *= delta_a;
+            }
+        }
+
+        self
     }
 }
 
