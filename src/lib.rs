@@ -175,13 +175,12 @@ impl Spline<QuinticPHCurve> {
     /// Construct a quintic PH spline from positional data, using the Catmull-Rom method
     /// for the differential data.
     pub fn catmull_rom(pts: &[Vec3]) -> Self {
-        let n = pts.len();
         Self {
             segments: pts
                 .iter()
                 .copied()
                 .tuple_windows()
-                .map(move |(p0, p1, p2)| (p1, 0.25 * ((n - 2) as f32) * (p2 - p0)))
+                .map(move |(p0, p1, p2)| (p1, 0.5 * (p2 - p0)))
                 .tuple_windows()
                 .map(|((p0, d0), (p1, d1))| QuinticPHCurve::new(p0, p1, d0, d1))
                 .collect(),
@@ -228,7 +227,7 @@ impl QuinticPHData {
                     + 5. * (ta0 * F * ta2.conjugate() + ta2 * F * ta0.conjugate()).xyz();
                 let [l, mu, nu] = c.normalize().to_array();
                 let ta1 = (ta0 + ta2) * -0.75
-                    + Quat::from_xyzw(-l / (1. - nu), -mu / (1. - nu), 1., 0.)
+                    + quat(-l / (1. - nu), -mu / (1. - nu), 1., 0.)
                         * 0.25
                         * (0.5 * (1. - nu) * c.length()).sqrt();
 
