@@ -225,11 +225,8 @@ impl QuinticPHData {
                 const F: Quat = Quat::from_array([0., 0., -1., 0.]); // forward
                 let c = 120. * q_normalized_inv.mul_vec3(dp) - 15. * (tdi + tdf)
                     + 5. * (ta0 * F * ta2.conjugate() + ta2 * F * ta0.conjugate()).xyz();
-                let [l, mu, nu] = c.normalize().to_array();
-                let ta1 = (ta0 + ta2) * -0.75
-                    + quat(-l / (1. - nu), -mu / (1. - nu), 1., 0.)
-                        * 0.25
-                        * (0.5 * (1. - nu) * c.length()).sqrt();
+                let (r, _) = inverse_solve_quat(c);
+                let ta1 = (ta0 + ta2) * -0.75 + r * 0.25;
 
                 (ta0, ta1, ta2)
             })
