@@ -378,8 +378,98 @@ fn hermite_quintic_polynomial_derivative<T: Copy + Add<Output = T> + Mul<f32, Ou
         + coefs[4] * 4. * t.powi(3)
 }
 
+// allow dead code for now
+// this will be used in a future release for computing the elastic bending energy
+#[allow(dead_code)]
+fn quaternion_quadratic_roots(a0: Quat, a1: Quat, a2: Quat) -> (Quat, Quat) {
+    let (p, q) = (
+        a0.conjugate() / a0.length_squared() * a1,
+        a0.conjugate() / a0.length_squared() * a2,
+    );
+
+    const EPS: f32 = 0.001;
+
+    let p_prime = quat(p.x, p.y, p.z, 0.);
+    let q_prime = q - (p - quat(0., 0., 0., p.w / 2.)) * p.w / 2.;
+
+    if p_prime.length_squared() < 1e-7 {
+        // p is real
+        let q_im = q - quat(0., 0., 0., q.w);
+        if q_im.length_squared() < 1e-7 {
+            // both are real; use the regular quadratic formula
+            // x^2 + px + q
+            let discriminant = p.w * p.w - 4. * q.w;
+            let summand = match discriminant {
+                d if d < 0. => quat((-d).sqrt(), 0., 0., 0.),
+                d => quat(0., 0., 0., d.sqrt()),
+            };
+
+            return ((-p + summand) / 2., (-p - summand) / 2.);
+        }
+
+        // q is complex
+        let pw2_minus_4qw = p.w * p.w - 4. * q.w;
+        let ro = ((pw2_minus_4qw
+            + (pw2_minus_4qw * pw2_minus_4qw + 16. * q_im.length_squared()).sqrt())
+            / 2.)
+            .sqrt();
+        let summand = quat(0., 0., 0., ro / 2.) - q_im / ro;
+        return (-p / 2. + summand, -p / 2. - summand);
+    }
+
+    let b = p_prime.length_squared() + 2. * q_prime.w;
+    let e = q_prime.length_squared();
+    let d = 2. * p_prime.dot(q_prime);
+
+    let root_fn = |t, n| {
+        let p_prime_plus_t = p_prime + quat(0., 0., 0., t);
+        quat(0., 0., 0., -p.w / 2.)
+            - p_prime_plus_t.conjugate() / p_prime_plus_t.length_squared()
+                * (q_prime - quat(0., 0., 0., n))
+    };
+
+    let b2_minus_4e = b * b - 4. * e;
+    match (b, e, d) {
+        (b, _e, d) if d.abs() < EPS && b2_minus_4e >= 0. => {
+            let sqrt = b2_minus_4e.sqrt();
+            (root_fn(0., (b + sqrt) / 2.), root_fn(0., (b - sqrt) / 2.))
+        }
+        (b, e, d) if d.abs() < EPS && b2_minus_4e < 0. => {
+            let e_sqrt = e.sqrt();
+            let t = (2. * e_sqrt - b).sqrt();
+            (root_fn(t, e_sqrt), root_fn(-t, e_sqrt))
+        }
+        (b, _e, d) => {
+            let t = roots::find_roots_cubic(1., 2. * b, b2_minus_4e, -d * d)
+                .as_ref()
+                .iter()
+                .copied()
+                .find(|&x| x > 0.)
+                .expect("polynomial should have a unique positive root")
+                .sqrt();
+
+            (
+                root_fn(t, (t * t * t + b * t + d) / (2. * t)),
+                root_fn(-t, (t * t * t + b * t - d) / (2. * t)),
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use glam::quat;
+
     #[test]
-    fn it_works() {}
+    fn quat_quadratic() {
+        let a0 = quat(1., 0., 0., 1.);
+        let a1 = quat(0., 1., 0., 1.);
+        let a2 = quat(0., 0., 1., 2.);
+
+        let (r0, r1) = crate::quaternion_quadratic_roots(a0, a1, a2);
+        for root in [r0, r1] {
+            let eval = a0 * root * root + a1 * root + a2;
+            assert!(eval.length() < 1e-3, "{eval} (eval of {root}) should be 0");
+        }
+    }
 }
