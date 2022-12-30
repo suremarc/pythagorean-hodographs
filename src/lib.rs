@@ -9,6 +9,7 @@ use itertools::Itertools;
 #[cfg(not(feature = "std"))]
 #[allow(unused_imports)]
 use num_traits::Float;
+use ordered_float::OrderedFloat;
 
 /// A twice-differentiable parametric curve in 3-space.
 pub trait Curve3 {
@@ -161,9 +162,8 @@ impl Curve3 for QuinticPHCurve {
 
 impl Frame for QuinticPHCurve {
     /// The quaternion associated with the Euler-Rodrigues frame for this PH curve.
-    /// Note that a spline consisting of Euler-Rodrigues frames is not necessarily continuous.
-    /// This is intended to be corrected in future implementations, and R. Farouki provides
-    /// an algorithm to do so, but more research is needed.
+    /// Note that a spline consisting of Euler-Rodrigues frames is not necessarily continuous;
+    /// in the spline implementation we adjust the frames such that they are continuous.
     fn quat_unnormalized(&self, u: f32) -> Quat {
         self.data.a0 * (1. - u).powi(2)
             + self.data.a1 * u * (1. - u) * 2.
@@ -246,7 +246,7 @@ impl QuinticPHData {
             })
             .map(|(ta0, ta1, ta2)| (q_normalized * ta0, q_normalized * ta1, q_normalized * ta2))
             .map(|(a0, a1, a2)| QuinticPHData { a0, a1, a2, pi })
-            .min_by_key(|h| ordered_float::OrderedFloat(h.curve().elastic_bending_energy()))
+            .min_by_key(|h| OrderedFloat(h.curve().elastic_bending_energy()))
             .unwrap()
     }
 
@@ -284,6 +284,18 @@ impl QuinticPHData {
             weights: [w0, w1, w2, w3, w4],
             weighted_tangents: [wt0, wt1, wt2, wt3, wt4],
         }
+    }
+
+    fn elastic_bending_energy(&self) -> f32 {
+        let c0 = self.a0 - self.a1 * 2. + self.a2;
+        let c1 = (self.a1 - self.a0) * 2.;
+        let c2 = self.a0;
+        let (r0, r1) = quaternion_quadratic_roots(c0, c1, c2);
+
+        // assume r0 and r1 are complex for now
+        // compute partial fraction decomposition using Gauss-Jordan elimination
+
+        todo!()
     }
 }
 
@@ -378,9 +390,6 @@ fn hermite_quintic_polynomial_derivative<T: Copy + Add<Output = T> + Mul<f32, Ou
         + coefs[4] * 4. * t.powi(3)
 }
 
-// allow dead code for now
-// this will be used in a future release for computing the elastic bending energy
-#[allow(dead_code)]
 fn quaternion_quadratic_roots(a0: Quat, a1: Quat, a2: Quat) -> (Quat, Quat) {
     let (p, q) = (
         a0.conjugate() / a0.length_squared() * a1,
@@ -456,9 +465,68 @@ fn quaternion_quadratic_roots(a0: Quat, a1: Quat, a2: Quat) -> (Quat, Quat) {
     }
 }
 
+// m-by-N matrix
+fn gauss_jordan_eliminate<const N: usize>(rows: &mut [[f32; N]]) {
+    const EPS: f32 = 1e-4;
+    let m = rows.len();
+
+    let mut h = 0;
+    for k in 0..N {
+        let i_max = rows[h..]
+            .iter()
+            .map(|row| OrderedFloat(row[k].abs()))
+            .position_max()
+            .unwrap()
+            + h;
+        if rows[i_max][k].abs() < EPS {
+            continue;
+        }
+
+        rows.swap(h, i_max);
+        let (pivot_row, rows_after_pivot) = rows[h..].split_first_mut().unwrap();
+        for row in rows_after_pivot {
+            let f = row[k] / pivot_row[k];
+            row[k] = 0.;
+            for j in k + 1..N {
+                row[j] -= pivot_row[j] * f;
+            }
+        }
+
+        h += 1;
+        if h >= m {
+            break;
+        }
+    }
+
+    // convert to reduced form via back-substitution
+    for i in (0..m).rev() {
+        match rows[i].into_iter().find_position(|x| x.abs() > EPS) {
+            None => continue,
+            Some((k, lead)) => {
+                let (pivot_row, rows_before_pivot) = rows[..=i].split_last_mut().unwrap();
+                for row in rows_before_pivot {
+                    let f = row[k] / pivot_row[k];
+                    row[k] = 0.;
+                    for j in k + 1..N {
+                        row[j] -= pivot_row[j] * f;
+                    }
+                }
+
+                // normalize the pivot row
+                pivot_row[k] = 1.;
+                for entry in pivot_row[k + 1..].iter_mut() {
+                    *entry /= lead;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use glam::quat;
+
+    use crate::gauss_jordan_eliminate;
 
     #[test]
     fn quat_quadratic() {
@@ -469,7 +537,33 @@ mod tests {
         let (r0, r1) = crate::quaternion_quadratic_roots(a0, a1, a2);
         for root in [r0, r1] {
             let eval = a0 * root * root + a1 * root + a2;
-            assert!(eval.length() < 1e-3, "{eval} (eval of {root}) should be 0");
+            assert!(eval.length() < 1e-4, "{eval} (eval of {root}) should be 0");
+        }
+    }
+
+    #[test]
+    fn eliminate_seven_by_six() {
+        #[allow(clippy::approx_constant)]
+        let mut system: [[f32; 7]; 6] = [
+            [1.00, 0.00, 0.00, 0.00, 0.00, 0.00, -0.01],
+            [1.00, 0.63, 0.39, 0.25, 0.16, 0.10, 0.61],
+            [1.00, 1.26, 1.58, 1.98, 2.49, 3.13, 0.91],
+            [1.00, 1.88, 3.55, 6.70, 12.62, 23.80, 0.99],
+            [1.00, 2.51, 6.32, 15.88, 39.90, 100.28, 0.60],
+            [1.00, 3.14, 9.87, 31.01, 97.41, 306.02, 0.02],
+        ];
+
+        let solution = [-0.01, 1.60278, -1.61320, 1.24549, -0.49098, 0.06576];
+
+        gauss_jordan_eliminate(&mut system);
+
+        for row in system {
+            println!("{row:.2?}");
+        }
+        let result: [f32; 6] = core::array::from_fn(|i| system[i][6]);
+        // assert_eq!();
+        for (expected, result) in solution.iter().zip(result.iter()) {
+            assert!((expected - result).abs() < 1e-4);
         }
     }
 }
