@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::ops::{Add, Mul};
+use core::ops::{Add, AddAssign, Div, Mul, MulAssign, Shl};
 use glam::f32::*;
 use itertools::Itertools;
 #[cfg(not(feature = "std"))]
@@ -46,9 +46,9 @@ pub trait Frame: Curve3 {
     fn frame(&self, u: f32) -> Affine3A {
         let a = self.quat_unnormalized(u);
 
-        let ai = (a * Quat::from_xyzw(1., 0., 0., 0.) * a.conjugate()).xyz() / a.length_squared();
-        let aj = (a * Quat::from_xyzw(0., 1., 0., 0.) * a.conjugate()).xyz() / a.length_squared();
-        let ak = (a * Quat::from_xyzw(0., 0., 1., 0.) * a.conjugate()).xyz() / a.length_squared();
+        let ai = a.mul_vec3(vec3(1., 0., 0.)) / a.length_squared();
+        let aj = a.mul_vec3(vec3(0., 1., 0.)) / a.length_squared();
+        let ak = a.mul_vec3(vec3(0., 0., 1.)) / a.length_squared();
 
         Affine3A::from_mat3_translation(Mat3::from_cols(ai, aj, ak), self.p(u))
     }
@@ -286,14 +286,62 @@ impl QuinticPHData {
         }
     }
 
+    fn curvature_squared_numerator(&self) -> Polynomial<14> {
+        todo!()
+    }
+
     fn elastic_bending_energy(&self) -> f32 {
-        let c0 = self.a0 - self.a1 * 2. + self.a2;
-        let c1 = (self.a1 - self.a0) * 2.;
-        let c2 = self.a0;
-        let (r0, r1) = quaternion_quadratic_roots(c0, c1, c2);
+        let d0 = self.a0 - self.a1 * 2. + self.a2;
+        let d1 = (self.a1 - self.a0) * 2.;
+        let d2 = self.a0;
+        let (r0, r1) = quaternion_quadratic_roots(d0, d1, d2);
 
         // assume r0 and r1 are complex for now
         // compute partial fraction decomposition using Gauss-Jordan elimination
+
+        let mut coefs = [Polynomial::<21>::default(); 22];
+
+        let rp = [
+            Polynomial([1., -2. * r0.w, r0.length_squared()]),
+            Polynomial([1., -2. * r1.w, r1.length_squared()]),
+        ];
+        let rp5 = rp.map(Polynomial::resize::<21>).map(|x| x * x * x * x * x);
+
+        // index of c_ijk in coefs = 2*(5*i + j) - k
+        // i in 0..=1
+        // j in 1..=5
+        // k in 0..=1
+        // coefs[0] = b (the const coefficient)
+
+        coefs[0] = rp5[0] * rp5[1];
+
+        for i in 0..=1 {
+            // j=1 is a special case, handle it afterwards
+            let mut product = Polynomial::<21>::identity();
+            for j in (2..=5).rev() {
+                for k in 0..=1 {
+                    coefs[2 * (5 * i + j) - k] = (product
+                        * -2.
+                        * (j - 1) as f32
+                        * Polynomial([1., -r0.w]).resize()
+                        * rp5[1 - i].resize())
+                        << k;
+                }
+
+                product *= rp[i].resize();
+            }
+
+            for k in 0..=1 {
+                coefs[2 * (5 * i + 1) - k] = product << k;
+            }
+        }
+
+        coefs[21] = self.curvature_squared_numerator().resize();
+
+        let mut system = transpose(coefs.map(|p| p.0));
+        gauss_jordan_eliminate(&mut system);
+
+        let solution = system.map(|row| row[21]);
 
         todo!()
     }
@@ -312,13 +360,8 @@ impl HermiteQuintic {
     fn elastic_bending_energy(&self) -> f32 {
         (0..1000)
             .map(|x| x as f32 * 0.001)
-            .map(|u| self.curvature_squared(u) * self.speed(u) * 0.001)
+            .map(|u| self.dp(u).cross(self.d2p(u)).length_squared() / self.speed(u).powi(5) * 0.001)
             .sum()
-    }
-
-    fn curvature_squared(&self, u: f32) -> f32 {
-        self.dp(u).cross(self.d2p(u)).length_squared()
-            / hermite_quintic_polynomial(self.weights, u).powi(6)
     }
 }
 
@@ -519,6 +562,126 @@ fn gauss_jordan_eliminate<const N: usize>(rows: &mut [[f32; N]]) {
                 }
             }
         }
+    }
+}
+
+fn transpose<const M: usize, const N: usize>(mat: [[f32; N]; M]) -> [[f32; M]; N] {
+    let mut new = [[0f32; M]; N];
+    for (i, row) in new.iter_mut().enumerate() {
+        for (j, cell) in row.iter_mut().enumerate() {
+            *cell = mat[j][i];
+        }
+    }
+
+    new
+}
+
+// Simple polynomial implementation with overflowing multiplication.
+// note that N is actually the degree minus one
+#[derive(Debug, Clone, Copy)]
+struct Polynomial<const N: usize>([f32; N]);
+
+impl<const N: usize> Default for Polynomial<N> {
+    fn default() -> Self {
+        Self([0f32; N])
+    }
+}
+
+impl<const N: usize> Polynomial<N> {
+    fn identity() -> Self {
+        let mut poly = Self::default();
+        poly.0[0] = 1.;
+
+        poly
+    }
+
+    fn resize<const M: usize>(self) -> Polynomial<M> {
+        let mut zeroed = [0f32; M];
+
+        for (i, entry) in zeroed.iter_mut().take(N).enumerate() {
+            *entry = self.0[i]
+        }
+
+        Polynomial(zeroed)
+    }
+
+    fn eval(self, val: f32) -> f32 {
+        let mut product = 1.;
+        self.0
+            .into_iter()
+            .map(|coef| {
+                let result = coef * product;
+                product *= val;
+                result
+            })
+            .sum()
+    }
+}
+
+impl<const N: usize> Add for Polynomial<N> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(core::array::from_fn(|k| self.0[k] + rhs.0[k]))
+    }
+}
+
+impl<const N: usize> AddAssign for Polynomial<N> {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+impl<const N: usize> Mul for Polynomial<N> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self(core::array::from_fn(|k| {
+            let mut sum = 0.;
+            for l in 0..k {
+                sum += self.0[l] * rhs.0[k - l];
+            }
+            sum
+        }))
+    }
+}
+
+impl<const N: usize> Mul<f32> for Polynomial<N> {
+    type Output = Self;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        Self(self.0.map(|x| x * rhs))
+    }
+}
+
+impl<const N: usize> Div<f32> for Polynomial<N> {
+    type Output = Self;
+
+    fn div(self, rhs: f32) -> Self::Output {
+        Self(self.0.map(|x| x / rhs))
+    }
+}
+
+impl<const N: usize> MulAssign for Polynomial<N> {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs;
+    }
+}
+
+impl<const N: usize> Shl<usize> for Polynomial<N> {
+    type Output = Self;
+
+    #[allow(clippy::suspicious_arithmetic_impl)]
+    fn shl(mut self, rhs: usize) -> Self::Output {
+        for i in rhs..self.0.len() {
+            self.0[i] = self.0[i - rhs];
+        }
+
+        for i in 0..rhs {
+            self.0[i] = 0.;
+        }
+
+        self
     }
 }
 
