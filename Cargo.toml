@@ -13,7 +13,7 @@ keywords = ["math", "geometry", "spline", "interpolation", "number"]
 categories = ["mathematics"]
 
 [dependencies]
-glam = { version = "0.22.0", default-features = false }
+glam = { version = "0.24.2", default-features = false }
 itertools = { version = "0.10.5", default-features = false }
 ordered-float = { version = "3.4.0", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
@@ -22,10 +22,10 @@ roots = "0.0.8"
 [features]
 default = ["std"]
 std = ["glam/std", "itertools/use_std", "ordered-float/std"]
-libm = ["glam/libm", "glam/num-traits"]
+libm = ["glam/libm"]
 
 [dev-dependencies]
-glam = { version = "0.22.0", features = ["rand"] }
+glam = { version = "0.24.2", features = ["rand"] }
 criterion = "0.4"
 rand = "0.8.5"
 
