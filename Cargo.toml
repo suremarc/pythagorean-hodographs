@@ -1,6 +1,6 @@
 [package]
 name = "pythagorean-hodographs"
-version = "0.5.3"
+version = "0.5.4"
 authors = ["Matthew Cramerus <suremarc.pm@gmail.com>"]
 edition = "2021"
 description = "Pythaogrean hodograph splines"
